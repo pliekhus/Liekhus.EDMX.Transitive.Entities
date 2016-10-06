@@ -1,7 +1,10 @@
 ﻿<#@ template language="C#" debug="true" hostspecific="true"#>
 <#@ include file="EF.Utility.CS.ttinclude"#>
+<#@ assembly name="$(ProjectDir)TiraggoEdmx\TiraggoEdmx.EF.dll" #>
 <#@ import namespace="System.Data" #>
+<#@ import namespace="System.Xml" #>
 <#@ import namespace="System.Xml.Serialization" #>
+<#@ import namespace="TiraggoEdmx_v3" #>
 <#
     string path = System.IO.Path.GetDirectoryName(Host.TemplateFile);
 
@@ -12,6 +15,20 @@
 
     string inputFile = edxmFileName;
     string inputPath = path + "\\" + edxmFileName;
+
+	//get the stored procedure mapping attributes to know which entities to add to the repository
+	XmlDocument xml = new XmlDocument();
+	xml.Load(inputPath);
+	XmlNamespaceManager nsmgr = new XmlNamespaceManager(xml.NameTable);
+	nsmgr.AddNamespace("edmx", "http://schemas.microsoft.com/ado/2009/11/edmx");
+	nsmgr.AddNamespace("cs", "http://schemas.microsoft.com/ado/2009/11/mapping/cs");
+	XmlNodeList entityMappingNodes = xml.SelectSingleNode("edmx:Edmx", nsmgr)
+								.SelectSingleNode("edmx:Runtime", nsmgr)
+								.SelectSingleNode("edmx:Mappings", nsmgr)
+								.SelectSingleNode("cs:Mapping", nsmgr)
+								.SelectSingleNode("cs:EntityContainerMapping", nsmgr)
+								.SelectSingleNode("cs:EntitySetMapping", nsmgr)
+								.SelectNodes("cs:EntityTypeMapping", nsmgr);
 
     MetadataLoader loader = new MetadataLoader(this);
     var	fileManager = EntityFrameworkTemplateFileManager.Create(this);
@@ -39,13 +56,18 @@ using System.Collections.Generic;
     <#="{"#>
 
 	<#
-    // for each entity
-    foreach (EntityType entity in itemCollection.GetItems<EntityType>().Where(x => x.Abstract == false).OrderBy(e => e.Name))
+    // for each mapped entity
+	foreach(XmlNode entityMap in entityMappingNodes)
+    //foreach (EntityType entity in itemCollection.GetItems<EntityType>().Where(x => x.Abstract == false).OrderBy(e => e.Name))
     {
+		EntityType entity = itemCollection.GetItems<EntityType>().Where(x => x.Abstract == false && x.FullName == entityMap.Attributes["TypeName"].Value).FirstOrDefault();
+		if(entity!=null)
+		{
 		#>
-		<#="void Save" + entity.Name + "(" + entity.Name + " item);"#>
-	<#}#>
-    <#="}"#>
+	<#="void Save" + entity.Name + "(" + entity.Name + " item);"#>
+		<#}
+	}#>
+   <#="}"#>
 <#
     EndNamespace(code);
 	fileManager.Process();
